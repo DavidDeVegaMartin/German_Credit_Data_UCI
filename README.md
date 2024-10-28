@@ -22,7 +22,7 @@ This repository is an evolution of a practical assignment for the Data Mining co
 ![Pagina_14](Images/14.png)
 ![Pagina_15](Images/15.png)
 
-#Project Includes:
+## **Project Includes:**
 * credit.zip ----------------> Contains original dataset.
 * GermanCreditDataset.Rmd ---> Contains R script.
 * GermanCreditDataset.pdf ---> Contains Main Explanatory Report.
