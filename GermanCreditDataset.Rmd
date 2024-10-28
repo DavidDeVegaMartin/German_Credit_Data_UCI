@@ -1,0 +1,1877 @@
+---
+title: 'Minería de datos: PEC3 - Clasificación con árboles de decisión'
+author: 'DAVID DE VEGA MARTIN - ddevega '
+date: "Noviembre 2021"
+output:
+  pdf_document:
+    highlight: zenburn
+    toc: yes
+    fig_width: 6
+    fig_height: 4
+  html_document:
+    highlight: default
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 2
+    includes:
+      in_header: null
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval=T, echo=T)
+```
+
+\newpage
+
+# Introducción
+
+## Carga de librerias:
+
+
+```{r message= FALSE, warning=FALSE}
+if(!require(ggplot2)){
+    install.packages('ggplot2', repos='http://cran.us.r-project.org')
+    library(ggplot2)}
+
+if(!require(ggpubr)){
+    install.packages('ggpubr', repos='http://cran.us.r-project.org')
+    library(ggpubr)}
+
+if(!require(grid)){
+    install.packages('grid', repos='http://cran.us.r-project.org')
+    library(grid)}
+
+if(!require(gridExtra)){
+    install.packages('gridExtra', repos='http://cran.us.r-project.org')
+    library(gridExtra)}
+
+if(!require(C50)){
+    install.packages('C50', repos='http://cran.us.r-project.org')
+    library(C50)}
+
+if(!require(gmodels)){
+    install.packages('gmodels', repos='http://cran.us.r-project.org')
+    library(gmodels)}
+
+if(!require(dplyr)){
+    install.packages('dplyr', repos='http://cran.us.r-project.org')
+    library(dplyr)}
+
+if(!require(partykit)){
+    install.packages('partykit', repos='http://cran.us.r-project.org')
+    library(partykit)}
+
+if(!require(skimr)){
+    install.packages('skimr', repos='http://cran.us.r-project.org')
+    library(skimr)}
+
+if(!require(knitr)){
+    install.packages('knitr', repos='http://cran.us.r-project.org')
+    library(knitr)}
+
+if(!require(tidyr)){
+    install.packages('tidyr', repos='http://cran.us.r-project.org')
+    library(tidyr)}
+
+if(!require(reshape2)){
+    install.packages('reshape2', repos='http://cran.us.r-project.org')
+    library(reshape2)}
+
+if(!require(RColorBrewer)){
+    install.packages('RColorBrewer', repos='http://cran.us.r-project.org')
+    library(RColorBrewer)}
+
+if(!require(GGally)){
+    install.packages('GGally', repos='http://cran.us.r-project.org')
+    library(GGally)}
+
+if(!require(caret)){
+    install.packages('caret', repos='http://cran.us.r-project.org')
+    library(caret)}
+
+if(!require(rpart)){
+    install.packages('rpart', repos='http://cran.us.r-project.org')
+    library(rpart)}
+
+if(!require(rpart.plot)){
+    install.packages('rpart.plot', repos='http://cran.us.r-project.org')
+    library(rpart.plot)}
+
+if(!require(nnet)){
+    install.packages('nnet', repos='http://cran.us.r-project.org')
+    library(nnet)}
+
+if(!require(corrplot)){
+    install.packages('corrplot', repos='http://cran.us.r-project.org')
+    library(corrplot)}
+
+if(!require(caTools)){
+    install.packages('caTools', repos='http://cran.us.r-project.org')
+    library(caTools)}
+
+if(!require(magrittr)){
+    install.packages('magrittr', repos='http://cran.us.r-project.org')
+    library(magrittr)}
+if(!require(png)){
+    install.packages('png', repos='http://cran.us.r-project.org')
+    library(png)}
+
+
+
+```
+
+
+## Carga de los datos
+
+```{r message= FALSE, warning=FALSE}
+data<-read.csv("./DATOS/credit.csv",header=TRUE, sep=",",stringsAsFactors=TRUE)
+attach(data)
+```
+
+\newpage
+
+## Funciones
+
+Funcion para el calculo de las graficas
+
+```{r}
+crear_grafico <- function(data, variable_comp, titulo_grafico_A, 
+                          titulo_grafico_B) {
+  
+  # Renombrar las tablas
+  Tabla_A <- suppressMessages(
+    
+    data %>% 
+    group_by({{ variable_comp }}) %>% 
+    summarise(Total = n()) %>% 
+    mutate(Porcentaje = round(Total / sum(Total) * 100, 0))
+  )
+  
+  Tabla_B <- suppressMessages(
+    
+    data %>% 
+    group_by({{ variable_comp }}, default) %>% 
+    summarise(Total = n()) %>% 
+    mutate(Porcentaje = round(Total / sum(Total) * 100, 0))
+  )
+  
+  # Crear el primer gráfico
+  grafico_A <- ggplot(Tabla_A, aes(x = {{ variable_comp }}, y = Total, fill = 
+                                     {{ variable_comp }})) +          
+    geom_bar(width = 0.9, stat = "identity", position = position_dodge()) +                    
+    ylim(c(0, 1000)) +
+    labs(x = NULL, y = "Frecuencia \n (Porcentajes)", title = titulo_grafico_A) +
+    labs(fill = NULL) +
+    geom_text(aes(label = paste0(Total, " ", "(", Porcentaje, "%", ")")),
+              vjust = 0.3,
+              color = "black",
+              hjust = -0.05,
+              position = position_dodge(0.9),
+              angle = 0,
+              size = 4.0) +  
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+          legend.position = "None") +
+    coord_flip()
+  
+  # Crear el segundo gráfico
+  grafico_B <- ggplot(Tabla_B, aes(x = {{ variable_comp }}, y = Total,
+                                   fill = default)) +
+    geom_bar(width = 0.9, stat = "identity", position = position_dodge()) +
+     ylim(c(0, 1000)) +
+    labs(x = NULL, y = "Frecuencias \n (Porcentajes)", title = titulo_grafico_B) +
+    labs(fill = "Default") +
+    geom_text(
+      aes(label = paste0(Total, " ", "(", Porcentaje, "%", ")")),
+      hjust = -0.2,
+      color = "black",
+      size = 4.0,
+      position = position_dodge(0.9),
+      angle = 0
+    ) +
+    scale_fill_discrete(name = "Default", labels = c("Bueno ", "Malo")) +
+    theme(axis.text.y = element_blank(),
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+          legend.position = "right") +
+    coord_flip()
+  
+  invisible(
+    grid.arrange(grafico_A + theme(plot.title = 
+                                      element_text(hjust = 0.5)),
+                  grafico_B + theme(plot.title = 
+                                      element_text(hjust = 0.5)),
+                  ncol = 2, nrow = 1)
+  )
+  }
+```
+
+Calcular performance:
+
+```{r warning=FALSE}
+calculate_performance <- function(model_description, confusion_matrix) {
+  
+  TP <- confusion_matrix[1,1]
+  FP <- confusion_matrix[1,2]
+  FN <- confusion_matrix[2,1]
+  TN <- confusion_matrix[2,2]
+  
+  accuracy    <- round ((TP + TN) /(TP + TN + FN + FP),3)
+  error <- round( (FN + FP)/(TP + TN + FN + FP),3)
+  sensitivitie <- round (TP/(TP + FP),3)
+  specificitie<- round (TN/(TN + FN),3)
+  precision   <- round (TP/(TP + FP),3)
+  
+  #output_row <- data.frame(model_description,TP,FP,FN,TN,accuracy,error,
+  #sensitivitie,specificitie,precision)
+  output_row <- data.frame(model_description,TP,FP,FN,TN,accuracy,error)
+  return(output_row)
+}
+```
+
+\newpage
+
+### Análisis inicial: Exploración de la base de datos
+
+En primer lugar se calculan las dimensiones de la base de datos y se analizan 
+que tipos de atributos presenta
+
+El dataframe presenta  1000 registros o clientes (filas) y 21 variables
+(columnas). 
+
+```{r}
+dim(data)
+```
+Se comrprueba la ausencia de  valores faltantes.
+```{r}
+dim(data[is.na(data),])
+```
+
+No hay que hacer ajustes en el dataframe de preparacion. No hay ni datos
+ausentes ni nulos, en las 21 variables.
+
+### Descripcion de variables:
+
+Encontramos información importante en el fichero german que nos descargamos de 
+la página de la UCI:
+
+  - checking_balance: Saldo de la cuenta. Basado en el sueldo de al menos un año.
+
+  - months_loan_duration: Duración del préstamo en meses.
+
+  - credit_history: Historia crediticia. Préstamos pagados o impagados en este 
+    y otros bancos.
+
+  - purpose: Propósito del préstamo, es decir, a qué está destinado.
+
+  - amount: Importe del préstamo.
+
+  - savings_balance: Saldo de ahorros.
+
+  - employment_length: Duración del empleo en años.
+
+  - installment_rate: Tasa de apalancamiento en porcentaje sobre el sueldo 
+    disponible.
+
+  - personal_status: Estado civil y género.
+
+  - other_debtors: Otros deudores o garantes.
+
+  - residence_history: Años en su actual residencia.
+
+  - property: Tipo de propiedad
+
+  - age: Edad
+
+  - installment_plan: Otros planes de apalancamiento.
+
+  - housing: Régimen de vivienda.
+
+  - existing_credits: Número de créditos existentes en este banco.
+
+  - default: Deuda. Es la clasificación del riesgo. Toma dos valores:
+        1 -> Bueno
+        2 -> Malo
+
+  - dependents: Número de personas a su cargo.
+
+  - telephone: Teléfono a su nombre (Sí o No).
+
+  - foreign_worker: Trabajador extranjero(Sí o No).
+
+  - job: Tipo de empleo.
+
+
+
+```{r}
+str(data)
+```
+ 
+
+```{r}
+summary(data)
+```
+\newpage
+
+# Analisis exploratorio de datos (EDA) y tratamiento de variables
+
+El objetivo de este PEC, es un problema de evaluacion de la  calidad crediticia.
+Recogida en la variable default, variable cualitativa dicotomica  donde:
+  1 es calidad crediticia buena.
+  2 calidad crediticia mala.
+
+Comparando esta variable defaults se procedera a evaluar cada una de las 
+variables. Estas se agruparan en varias categorias para mejorar la comprension
+global de las mismas.
+
+El primer objetivo es obtener un perfil del tipo de credito que otorga este 
+banco, empleando las siguientes variables:
+
+  - Default, calidad creditia.
+  - Duration in month, duracion en meses.
+  - Credit Amount, importe del credito.
+  - Purpose, objeto por el que se pide la financiacion.
+  - Number of existing credit at this bank, numero de otros creditos en el banco.
+  
+  
+El paso siguiente es elaborar un perfil del cliente de este banco.
+Para ello abordaremos el problema desde un triple prisma: situacion personal,
+patrimonial y financiera.
+
+Para evaluar su situacion personal, se  emplearan las siguientes variables:
+  
+  - Personal status and sex, sexo y estado civil.
+  - Age , edad.
+  - Job, puesto de trabajo.
+  - Present employment since, tiempo que lleva en el trabajo actual.
+  - Foreign worker, si el cliente es nacional o extranjero.
+  - Dependents, personas a su cargo.
+  - Telephone si tiene telefono o no.
+  
+En la elaboracion del perfil patrimonial se abordara el analisis de las 
+siguientes variables:
+
+  - Housing, regimen de tenencia de la vivienda.
+  - Property, tipo de propiedad
+  - Present residence since, tiempo que lleva el cliente en su residencia actual.
+  
+Finalmente se obtendra un perfil crediticio del cliente, empleando las variables:
+
+  - Status of existing checking account, saldo de la cuenta bancaria del cliente.
+  - Credit History, historial creditio.
+  - Saving account, cuenta corriente saldo.
+  - Installment rate in percentage of disposible income, apalancamiento de la 
+    operacion en funcion de los ingresos del cliente.
+  - Other debstor, otras deudas.
+  - Other installment plans, otros planes de compra con pago aplazado.
+  
+\newpage
+# Perfil del tipo de credito concedido
+
+## Calidad crediticia: default
+
+Es una variable factor, tiene  dos niveles. 
+
+* Nivel 1 que podriamos denominar creditos de buena calidad.
+
+* Nivel 2 que serian creditos de calidad mala o dudosa.
+
+Puede observarse como el 70% de los creditos son de buena calidad.
+Para facilitar la interpretacion de la variable a lo largo del estudio, 
+se cambian los valores de los niveles a Bueno/Malo.
+
+Esta variable sera la que emplee para comparar con las demas.
+Asimismo sera la variable a predecir en los modelos que se desarrollaran 
+en la ultima parte.
+
+```{r}
+data$default <- ifelse(data$default == "1","Bueno","Malo")
+
+data$default <- as.factor(data$default)
+```
+
+```{r}
+ggplot(data,
+       aes(y = reorder(factor(default), factor(default), function(y) length(y))
+)) +
+  geom_bar(fill = "dodgerblue4") +
+  theme(legend.position = "None") +
+  geom_text(stat = 'count', aes(label = after_stat(count)), vjust = 0.5, 
+            hjust = 3, color = "white") +
+  labs(x = "Customer Total", y = "Levels")
+
+```
+
+
+Pasemos ahora a determinar que tipo de creditos concede nuestro banco y que 
+perfil de cliente tiene.
+\newpage
+
+## Historial crediticio: credit_history.
+
+Es una varible factor con 5 niveles:
+
+  - Repaid: El cliente atiende a los pagos con normalidad.
+  
+  - Full/repaid this bank : El cliente atiende a los pagos con normalidad para 
+    el banco que se esta estudiando.
+  
+  - Fully repaid: El cliente ha pagado anteriores creditos completamente
+  
+  - Delayed : El cliente ha tenido retrasos en los pagos anteriormente.
+  
+  - Critical : Cuenta en estado critico por retrasos  o por otros creditos 
+    existentes, no en este banco.
+    
+El factor se ordena, de este modo, de mayor a menor nivel de solvencia del 
+cliente con repaid y critical como extremos de los mismos.
+
+Obtenemos un barplot con los niveles del factor y la proporcion de creditos
+buenos y malos de cada nivel. En lo sucesivo, este sera el metodo de analisis 
+empleado para todas las variables.
+
+Son creditos solventes en el momento del analisis los pertenecientes a las 
+categorias repaid, fully-repaid this bank, fully repaid, estos 3 niveles suponen
+un 60% del total de creditos. En la variable Levels teniamos un total de 
+creditos buenos del 70%, esto se debe al alto impacto que tienen los creditos 
+malos enlas categorias fully repaid this bank y fully repaid ambas con un 60%, 
+esto es mas del doble de la proporcion de creditos malos 30% observado en la
+variableLevels.
+
+Son creditos de dudosa solvencia los pertenecientes a las categorias: delayed
+y critical. Suponen un 38% del total, un 8% mas de lo obtenido en la variable
+Levels.
+
+El analisis de las proporciones de tipo de credito en ambas categorias muestra
+que se encuentran dentro de los niveles de credito general 70-80 % de creditos
+buenos.
+
+Seria necesario calcular el importe total de creditos para cada categoria del 
+factor, asi como el importe en cada categoria de estado de credito.
+
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+# Uso de la función
+crear_grafico(data , variable_comp = credit_history, 
+              titulo_grafico_A = "Credit History",
+              titulo_grafico_B = "Default VS Credit History")
+```
+
+El 62% de los  credito estan al corriente de pagos y no suponen problema.
+EL 38% restante lo forman los delayed y critical, que ya tienen retraso o son
+insolvente.
+
+\newpage
+## Duracion en meses del prestamo : months_loan_duration .
+
+Tenemos demasiados niveles, tendriamos que discretizar la variable:
+Para evitar subjetividades de que se considera corto, medio y largo plazo, 
+discretizaremos teniendo en cuenta el numero de meses, en multiplos de año. 
+
+Podemos observar que un 75% de los creditos tienen duracion de dos años o menos.
+
+```{r}
+data$year_duration_loan <- cut(data$months_loan_duration,
+                               breaks = c(0,12,24,36,48,100),
+                               labels = c('< 1 año','1-2 años','2-3 años',
+                                          '3-4 años','> 4 años' )
+                               )
+```
+```{r}
+# Uso de la función
+crear_grafico(data , variable_comp = year_duration_loan, 
+              titulo_grafico_A = "Duration Load",
+              titulo_grafico_B = "Duration Load VS Credit History")
+```
+
+
+
+```{r}
+duration_1 <-
+ggplot(data, aes(months_loan_duration, fill=default)) + 
+        geom_density(alpha=.5)+
+        labs(title="Distribución duración creditos x default")+
+        theme(plot.title = element_text(size=10,face = "bold"))
+
+duration_2 <-
+ggplot(data, aes(x = months_loan_duration, 
+                 y = default, fill = default)) + 
+geom_boxplot() + xlab("Duración del préstamo")
+
+ggarrange(duration_1,duration_2,labels = c("A", "B" ),ncol = 2, nrow = 1)
+```
+Puede observarse como los creditos malos tienen una duracion mayor que los 
+buenos, en todas las medidas su recorrido intercuartilico es el doble, su 
+mediana e incluso los bigote superior tambien se duplica.
+
+Tendria que examinarse la causa, esto es,  si es por la propia naturaleza del 
+mismo, esto es, su periodo de duracion es el establecido inicialmente 
+o si viene motivado por retrasos en las cuotas.
+
+En cualquier caso puede verse como en el caso de los creditos buenos el 77% de 
+observaciones tienen duracion de dos años o menos.
+
+Hay que reseñar que a medida que aumenta la duracion los prestamos aumenta la 
+proporcion de creditos malos.
+
+Para los creditos de duracion menor o igual a dos años se mantiene de media 
+la proporcion 70% buenos que se observo para la variable Level. Sin embargo a 
+medida que aumenta la duracion la proporcion de creditos buenos baja hasta el 
+50%.
+
+\newpage
+
+## Amount: Cantidad del prestamo.
+No tenemos informacion sobre si es el montante original del credito o la parte 
+viva del mismo en el momento de toma de datos.
+
+En cualquier caso es una variable cuantitativa que vamos a representar mediante
+box plot y barplot.
+
+```{r}
+amount_1 <-
+ggplot(data, aes( x = factor(0),y= amount, fill = amount)) + 
+geom_boxplot() + xlab("Valor del préstamo")
+
+amount_2 <-
+ggplot(data, aes(y = amount, x = default, fill = default)) + 
+geom_boxplot() + xlab("Duración del préstamo")
+```
+
+Podemos observar como los creditos malos son de mayor importe.
+
+Si discretizamos la variable y calculamos por tramos de 5000 DM 
+obtenemos lo siguiente:
+
+```{r}
+data$amount_levels <- cut(data$amount,
+                          breaks = c(0,5000,10000,
+                                  15000,20000),
+                          
+                          labels = c('< 5k','5-10 k',
+                                     '10-15k','>15' ))
+```
+
+El 80% de los prestamos que otorga este banco son de 5000 marcos o menos.
+El importe del credito medio  se situa alrededor de los 2500 marcos.
+
+Se observa una mayor cuantia en la prestamos malos
+
+```{r warning=FALSE}
+amount_3 <-
+ggplot(data,
+aes(y =reorder( factor(amount_levels),factor(amount_levels),
+function(y)length(y))
+)) +
+geom_bar(fill = " dodgerblue4")+
+theme(legend.position = "None")+
+geom_text(stat='count', aes(label=..count..), vjust=0.5,
+hjust = 1,color ="white")+
+labs(x = "Customer Total", y = " Levels")
+
+amount_4 <-
+ggplot(data, aes(amount, fill=default)) +geom_density(alpha=.5) +
+  labs(title="Distribución cantidad solicitada x default")+
+  theme(plot.title = element_text(size=10,face = "bold"))
+
+ggarrange(amount_1 , amount_2,labels = c("A", "B"),ncol = 2, nrow = 1)
+ggarrange(amount_3,amount_4,labels = c("C","D"),ncol = 1, nrow = 2 )
+
+```
+
+La distribucion es muy similar para cada ambos tipos de credito por default.
+En el tramo de hasta 5000 marcos se observa una mayor concentracion de creditos
+malos. A partir de esa zona las distribuciones son equivalentes.
+
+Los creditos malos, por tanto se concentran en el tramos hasta 5000 marcos.
+
+```{r}
+crear_grafico(data , variable_comp = amount_levels, 
+              "Credit History", "Default VS Credit History")
+```
+
+El 96% de los creditos es de 10k o inferior.
+
+\newpage
+
+## Purpose. Destino del prestamos obtenido.
+
+Esta variable es un factor, con 10 niveles, que recoge en que bienes se 
+materializa el dinero prestado.
+
+Tenemos:
+    
+  - business: para financiar algun negocio.
+    
+  - car: adquisicion de un vehiculo ya sea nuevo o de segunda mano.
+    
+  - domestic appliances : electrodomesticos.
+  
+  - education : creditos para cursar estudios.
+  
+  - furniture: adquisicion de mobiliario domestico.
+  
+  - radio/tv : adquisicion de radio/tv
+  
+  - repairs : reparaciones domesticas, reformas etc.
+  
+  - retraining : mejorar-recuperar el historial crediticio.
+  
+  - others : otros.
+
+```{r}
+crear_grafico(data , variable_comp = purpose,
+titulo_grafico_A = "Purpose",
+titulo_grafico_B = "Default VS Purpose")
+```
+
+Como puede apreciarse  en la grafica, esta variable cuenta con demasiados 
+niveles para visualizar los datos correctamente, ademas la frecuencia absoluta
+de cada nivel es muy dispar, lo que complica ademas visualizar las proporciones
+de cada tipo de credito.
+
+Si puede apreciarse que un tercio del total de creditos son para adquisicion de
+vehiculos tanto nuevos como usados y las proporciones de tipo de creditos no se 
+aleja demasiado de los niveles de la variable levels.
+
+Casi la mitad de los creditos se conceden para la adquisicion de elementos 
+cotidianos del hogar.
+
+Estas dos categorias suponen  el 80% de creditos concedidos.
+
+El resto podria clasificarse como prestamos para financiar negocios o educacion
+y finalmente una clase que recogiese el resto de tipos.
+
+Puesto que el objeticvo de esta pec es operar arboles de decision y dado que 
+esta variable puede incrementar mucho el tamaño del mismo se propone discretizar
+la variable en los 4 niveles que se acaban de referir y si llegado el caso fuera
+variable decisiva se emplearia la variable discretizada.
+
+
+Conforme a este criterio se obtiene:
+    
+Se ha discretizado la variable en 4 categorias:
+
+  - Home: Se recoge todos los creditos para elementos muebles de uso cotidiano
+          para el hogar, muebles, electrodomesticos, reformas etc 
+          Agrupa fruniture, radio/tv, domestic appliances.
+
+  - Cars :Adqusicion de vehiculos nuevo o de segunda mano.
+ 
+  - Study/Business : Recoge creditos estudiantiles y aquellos efectuados en 
+                    negocios.
+ 
+  - Others: Recoge el resto de categorias: retraining, repairs y otras.
+
+```{r}
+data$purpose <- as.factor(data$purpose)
+
+data['purpose_levels']<- data['purpose']
+
+levels(data$purpose_levels) <- list(
+  Home = c('furniture','radio/tv','domestic appliances'),
+  Cars = c('car (used)','car (new)'),
+  Study_Business = c('business','education'),
+  Others = c('retraining','repairs','others')
+)
+```
+
+```{r}
+crear_grafico(data , purpose_levels, 
+              "Purpose", "Default VS Purpose")
+```
+ 
+ El 81% de los prestamos se concentran en Hogar y Cars.
+ 
+ Alrededor del 70% de los prestamos son de buena calidad independientemente
+ de la categoria, salvo study-business que se reduce a casi el 60%, esto es, 
+ se mantienen las proporciones observadas en la variable Levels.
+ 
+ \newpage
+ 
+## Apalancamiento, en proporcion a los ingresos disponibles: installment_rate in percentage of disposable income.
+
+Es una variable tipo factor con un rango entre 1 y 4. 
+Mide el apalancamiento financiero de la operacion, mediante una escala interna
+que no se suministra en la documentacion.
+
+  * Nivel 1 .- Poco o ningun apalancamiento.
+
+  * Nivel 4 .- Maximo apalancamiento.
+  
+Asi el 64% del total de creditos deben considerarse con bastante o maximo 
+apalancamiento.
+
+Esta variable siguen para todos los niveles de factor las proporciones de la 
+variables Levels con un 70% aproximadamente de creditos buenos.
+
+Se desconoce si existe relacion entre esta variable y la que se procedera a 
+evaluar a continuacion, existing_credits.
+
+```{r}
+crear_grafico(data , variable_comp = installment_rate, 
+              titulo_grafico_A = "Installment Rate",
+              titulo_grafico_B = "Default VS Installment Rate")
+```
+
+\newpage
+
+## Creditos existentes en este banco: existing_credits.
+
+Refleja el numero de creditos que ya tiene el cliente con este banco.
+
+```{r}
+crear_grafico(data , existing_credits, 
+              "Existing Credits",
+              "Default VS Existing Credit")
+```
+El 60 % de los clientes tienen un credito con este banco, el 99% un maximo de 
+dos.
+La proporcion de creditos malos es mas elevada entre los que tienen unicamente 
+un prestamo.
+
+La proporcion entre tipos de credito sigue las proporciones para la variable 
+levels.
+
+\newpage
+
+# Perfil personal del cliente.
+
+## Sexo y Estado civil : Personal_status
+
+La variable consta de 4 niveles:
+  
+  * Mujer 
+  * Hombres soltero
+  * Hombres casado
+  * Hombres divorciado
+
+El 70% de las observaciones son hombres, de los cuales son solteros el 78%.
+Son el grupo mas solvente. En general, la distribucion respeta las proporciones
+para la variable levels, a excepcion del grupo de hombre divorciado.
+
+```{r}
+crear_grafico(data , personal_status, 
+              "Personal Status",
+              "Default VS Personal Status")
+```
+
+\newpage
+
+## Edad: Age
+
+Se procede a discretizar la variable en grupos de edad de 20 años.
+
+```{r}
+data$age <- as.numeric(data$age)
+data$age_levels <- cut(data$age, breaks = c(0,20,40,60,100),
+labels = c('< 20','20-40','40-60','>60'))
+
+crear_grafico(data , age_levels, 
+              "Age Levels",
+              "Default VS Age Levels")
+
+```
+
+El 94% de los clientes esta comprendido entre los 20 y los 60 años. 
+Nuevamente, los grupos de edad siguen la proporcion de la variable Levels.
+
+\newpage
+
+## Numero de dependientes : Number of dependents
+
+Recoge el numero de personas a cargo del cliente.
+
+```{r}
+crear_grafico(data, dependents, 
+              "Dependents",
+              "Default VS Dependents")
+```
+
+El 85% de los clientes tiene al menos una persona dependiente a su cargo.
+La proporcion de creditos buenos/manos sigue es la ya vista en Levels.
+
+\newpage
+
+## Trabajo: job.
+
+Factor. Consta de 4 niveles.
+
+• Management self - employed: Trabajadores autonomos
+
+• Skilled employed: Trabajadores especializados.
+
+• Unemployed non-resident:Desempleados no residentes , se entiendes que sin 
+  permiso de trabajo.
+  
+• Unskilled resident: Trabajadores no especializados.
+
+
+```{r}
+crear_grafico(data, job, 
+              "Jobs",
+              "Default VS Jobs")
+```
+El 83% de los prestamos estan suscritos por empleados por cuenta ajena
+cualificados o no.
+
+Nuevamente se cumplen las proporciones de prestamos buenos malos de la variable
+Levels.
+
+\newpage
+
+## Employmente_lenght : Tiempo que lleva el cliente en su empleo.
+Se transforma la variable en factor y se procede a ordenarla:
+
+```{r}
+data$employment_length <- as.factor(data$employment_length)
+data$employment_length <- ordered(data$employment_length,
+                                  levels = c("0 - 1 yrs" ,"1 - 4 yrs",
+                                             "4 - 7 yrs","> 7 yrs","unemployed"
+                                             ))
+
+crear_grafico(data, employment_length, "employment_length", 
+              "Default VS employment_length")
+```
+
+La mitad de los clientes lleva un minimo de 4 años en su puesto de trabajo.
+
+Precisamente, el grupo de hasta un año es el que mayor porbabilidad de creditos
+malos junto con los desempleados con una proporcion de creditos malos del 40%.
+
+El resto de grupos siguen la proporcion usual de la variable Levels.
+
+\newpage
+
+## Trabajador extranjero : foreign_worker
+
+Factor, dos niveles dicotomica Si/No.
+
+```{r}
+crear_grafico(data, foreign_worker, "foreign_worker", 
+              "Default VS foreign_worker")
+```
+
+El 96% de los prestatarios es un extranjero. Esta variable puede 
+eliminarse ya que no aporta mas informacion que esa ya que la proporcion 
+de creditos buenos/malos es 70/30% como en la variable Levels.
+
+\newpage
+
+## Telefono : telephone.
+Factor dicotomico recoge si el cliente tiene telefono en su domicilio.
+
+```{r}
+crear_grafico(data, telephone, "telephone", 
+              "Default VS telephone")
+```
+
+El 60% de los clientes no tiene telefono. Independientemente de ellos ambos
+grupos respetan la proporcion 70% de creditos buenos de la variable Levels.
+
+Esta variable apenas aporta informacion y seria factible prescindir de la misma.
+
+ Perfil situacion patrimonial de los clientes.
+
+Se divide en dos partes:
+
+Activos inmobiliarios:Basicamente la vivienda habitual y su regimen de tenencia.
+
+Activos financieros como son saldos de cuenta etc
+
+\newpage
+
+# Patrimonio inmobiliario.
+ 
+## Vivienda: housing
+
+Recoge el de tenencia de la vivienda habitual del cliente.
+
+Factor de 3 niveles:
+
+- Rent: En alquiler.
+- Own: En propiedad.
+- For Free: Gratuito.
+
+```{r}
+crear_grafico(data, housing, "housing", 
+              "Default VS housing")
+```
+
+El 71% de los clientes tienen su vivienda en propiedad siendo el grupo mas 
+solvente de todos, superando la proporcion de la variable levels con un 74%
+de creditos buenos.
+
+En el caso de vivienda free y rent la proporcion de buenos prestamos se ubica
+en un 60%. Esta variable es relativamente simple ya que contiene pocos factores
+y delimita claramente niveles de solvencia distintos de los mostrados en la 
+variable Levels.
+
+\newpage
+
+## Propiedad vivienda: Property.
+
+Factor 4 niveles:
+• building society savings: adquirido con recursos propios de su negocio.
+26
+• real estate : Comprado con hipoteca.
+• unknow / none : Desconocido o sin vivienda en propiedad.
+• other : Resto de situaciones.
+
+```{r}
+crear_grafico(data, property , "property", 
+              "Default VS property")
+```
+
+La mitad de las viviendas se han adquirida via ahorros o mediante hipoteca.
+La tipologia de mas solvencia es la de vivienda adquirida con hipoteca con 
+un 80% de creditos buenos. La opcion desconocido hay que prestarle especial 
+atencion ya que unicamente tiene un 56% de creditos buenos. El resto de opciones
+se encuentra en las proporcion de Levels con un 70% de creditos buenos.
+
+\newpage
+
+## Historico residencial: residence_history
+
+Años en su residencia actual.
+
+```{r}
+crear_grafico(data, residence_history , "residence_history", 
+              "Default VS residence_history")
+```
+
+El 56% de los creditos estan destinados a personas que llevan 3 o mas años
+viviendo en su actual residencia habitual.
+
+La proporcion de creditos buenos en todos los segmentos respetan la proporcion
+de la variables Levels.
+
+\newpage 
+
+# Perfil situacion financiera de los clientes.
+
+## Saldo en cuenta corriente: checking_balance.
+Esta expresado en DM Deutsche Mark Character a transformar en factor.
+Tiene 4 niveles:
+
+* < 0 DM - no tiene saldo positivo. Esta en descubierto.
+* > 0 y < 200 DM - Saldo positivo de hasta 200 DM.
+* > 200DM - Saldo positivo superior a 200 DM
+
+
+```{r}
+crear_grafico(data, checking_balance , "checking_balance", 
+              "Default VS checking_balance")
+```
+
+Se desconocen los saldos de cuentas de clientes en un 39% de los prestamos.
+Si hay que mencionar, que ese categoria es la mas solvente con mucha diferencia
+con un 88% de creditos buenos.
+
+El 54% de los creditos tienen una cantidad en cuenta de hasta 200 DM y es 
+importante destacar que en este caso la proporcion de creditos buenos baja 
+del 60 %.
+
+\newpage
+
+## Nivel de ahorro: .
+
+Esta expresado en DM Deutsche Mark Character a transformar en factor.
+Tiene 5 niveles:
+
+* < 100 DM - El saldo es inferior a 100 DM.
+* > 101 - 500 DM - Saldo positivo de 101 hasta 500 DM.
+* > 501- 1000 - Saldo positivo de 500Dm a 1000 DM
+* > 1000 - Saldo positivo superior a 1000 DM.
+
+```{r}
+crear_grafico(data, savings_balance , "savings_balance", 
+              "Default VS savings_balance")
+```
+
+El 60% de los clientes tiene un saldo de cuentas de hasta 100 marcos.
+
+Existen dos niveles de solvencia:
+
+Nivel hasta 500 DM con un ratio de credito buenos alrededor del 60 % inferior 
+al de la variable Levels.
+
+Nivel superior a 500 DM donde el incremento de solvencia es muy notable 
+alrededor del 80% 
+
+\newpage
+
+## Otras deudas: other_debtors
+
+Factor 3 niveles:
+• co-applicant: co-solicitante.
+• Guarantor: avalista.
+• None: ninguno.
+
+```{r}
+crear_grafico(data, other_debtors , "other_debtors", 
+              "Default VS other_debtors")
+```
+
+El 90% de clientes no tienen otros deudas, lo que resulta en una proporcion
+de creditos buenos conforme a la variable Levels del 70%.
+
+Entre el 10% restante la proporcion es muy dispar muy solventes en el caso 
+guarantor un 81%, y en el co-applicant la solvencia baja hasta el 56%.
+
+\newpage
+
+## Bienes comprados a plazos: installmment_plan
+
+Factor que consta de 3 niveles:
+
+* None.
+* Stores.
+* Bank.
+
+```{r}
+crear_grafico(data, installment_plan , "installment_plan", 
+              "Default VS installment_plan")
+```
+
+El 81% de los clientes no tienen planes de compra aplazados y estos siguen un
+ratio de creditos buenos del 70% en la linea de la variable Levels, un 70%.
+
+En los otros dos grupos caen en un 60%.
+
+```{r}
+# Return default values to original scale.
+data$default <- ifelse(data$default == "Bueno","1","2")
+
+# Move default column to last place
+data <- data %>% relocate(default,.after=last_col())
+credit <-data
+
+# Custom columns created for EDA are eliminated.
+credit <- subset(credit, select = -c(year_duration_loan, amount_levels,
+                                     age_levels, purpose_levels))
+str(credit)
+```
+
+\newpage
+
+# Conclusiones del EDA
+
+__* Tipologia de credito concedido.__
+
+El banco oferta creditos de consumo se concentran un 81% en financiacion de 
+coches(tanto nuevos como de segunda mano), como bienes para el hogar (muebles, 
+Tv/radio).
+
+Existe una proporcion de 70% de creditos buenos (son solventes) y un 30% malos
+(no solvente).
+
+El importe en un  95% de los casos tienen un importe de hasta 5K DM.
+
+El 77% tiene una duracion maxima de 2 años.
+
+El apalancamiento es alto o muy alto en un 64% de los casos y el cliente 
+presenta hasta dos creditos mas.
+
+__* Perfil del cliente.__
+
+Es un varon extranjero soltero, de entre 20-40 años, que tiene al menos una 
+persona dependiente a su cargo. Es un trabajador por cuenta ajena en un 83% de
+los casos y que lleva en su actual puesto de trabajo un minimo de 4 años.
+
+__* Perfil patrimonial del  cliente.__
+
+Un 71% de los clientes tiene vivienda en propiedad adquirida mediante ahorros
+y/o hipoteca.
+
+El credito se solicita cuando el cliente lleva al menos 3 años residiendo en 
+su actual vivienda.
+
+__* Perfil situacion financiera del  cliente.__
+
+El 60% de los clientes tiene un saldo en cuenta de hasta 100DM.
+
+Se desconoce el saldo de de tarjeta de credito para un 40% de los clientes, 
+si bien hay que destacar que esa clase es la mas solvente con diferencia con un 
+88% de creditos buenos.
+
+Para el resto de clientes, la mitad tiene un saldo en tarjeta de credito  de 
+hasta 200DM,y la proporcion de creditos buenos baja al 60%.
+
+El 80% de los clientes no tienen otros planes de compra aplazados.
+
+El 90% de los clientes no tiene deudas con otras entidades de las que no son 
+clientes.
+
+__En general son creditos de baja cuantia, pero alto apalancamiento sobre__ 
+__ingresos, para un cliente que cuenta con un patrimonio consistente en su __
+__vivienda habitual, la cual continuan pagando, y una baja cantidad de efectivo__ 
+__en cuentas.__
+
+\newpage
+
+# Modelos arboles de decision
+
+## Actuaciones previas.
+
+Este es un problema de clasificacion de riesgo crediticio. 
+Por tanto, la tarea consiste en hallar que variables minimizan el riesgo de 
+impago o maximizar la probabilidad de cobrar. La variable default es la que
+medira que clientes eran buenos pagadores y cuales malos pagadores o posibles 
+morosos. Niveles: 
+
+* 1 .- Credito bueno.
+* 2 .- Credito malo.
+
+En primer lugar se efectua una extraccion aleatoria, un sample, del dataset
+
+```{r}
+#RNGversion("3.5.2")
+set.seed(101)
+train_sample <- sample(1000, 660)
+str(train_sample)
+```
+```{r}
+credit_train <- credit[ train_sample, ]
+credit_test  <- credit[-train_sample, ]
+```
+
+Comprobacion de que las proporciones se mantienen y la extraccion es correcta.
+Train:
+```{r}
+round(prop.table(table(credit_train$default)),3)
+```
+Test:
+```{r}
+round(prop.table(table(credit_test$default)),3)
+```
+Se mantienen las proporciones.
+
+\newpage
+
+## Modelo C 5.0
+
+### Dataset Completo parametros Default
+```{r}
+# Modelo C5.0 completo default
+credit_train$default <- factor(credit_train$default)
+
+modelo_1 <- C5.0(credit_train[, names(credit_train) != "default"],
+                 credit_train[, names(credit_train) == "default"], rules=TRUE)
+summary(modelo_1 )
+```
+
+El algoritmo genera 12 reglas.
+Las primeras 7 reglas son de clase 1 creditos buenos, las 5 siguientes son la
+clase 2 credito malo y la probabilidad asociada.
+
+__Regla 1.- Probabilidad Credito Bueno 0.944 si :__
+
+* Balance en cuenta corriente entre descubierto a 200 DM
+
+* Duracion menor o igual a 24 meses
+
+* El historial de credito puede tener 3 estados : critical, delayed, repaid.
+
+* El proposito del credito es business.
+
+* La edad del cliente es de 52 años o menos.
+
+__Regla 2.- Probabilidad Credito Bueno 0.909 si:__
+
+* Duracion del prestamo menor o igual a 11 meses.
+
+* El historial de credito puede tener 3 estados : critical, delayed, repaid.
+
+* Cantidad del prestamo hasta 7882 euros
+
+* La edad del cliente es de 52 años o menos.
+
+
+__Regla 3.- Probabilidad Credito Bueno 0.876 si:__
+
+* Duracion del prestamo menor o igual a 36 meses.
+
+* El historial de credito puede tener 3 estados : critical, delayed, repaid.
+
+* El proposito del credito es radio/tv.
+
+* Su propiedad procede de ahorros de negocios, otros, inmuebles.
+
+
+__Regla 4.- Probabilidad Credito Bueno 0.861 si:__
+
+* El saldo en cuenta va de 200 a desconocido.
+
+__Regla 5 .- Probabilidad Credito Bueno 0.842 si:__
+
+* El proposito es comprar un coche usado y retraining.
+
+__Regla 6 .- Probabilidad Credito Bueno 0.84 si:__
+
+* Duracion del prestamo menor o igual a 22 meses.
+
+* El historial de credito puede tener 3 estados : critical, delayed, repaid.
+
+* antidad del prestamo hasta 7882 euros
+
+* El cliente no tienen installment_plan
+
+
+__Regla 7 .- Probabilidad Credito Bueno 0.795 si:__
+
+* Saldo en cuenta de mas de 500 DM a desconocido.
+
+__Regla 8 .- Probabilidad Credito Malo 0.90 si:__
+
+* Saldo en cuenta de descubierto hasta 500 DM.
+
+* El historial de credito puede tener 3 estados : fully repaid, fully repaid bank.
+
+* Tiene mas de un dependiente a su cargo.
+
+__Regla 9 .- Probabilidad Credito Malo 0.833 si:__
+
+* Duracion del prestamo mayor a 11 meses.
+
+* Proposito del prestamo compra de muebles.
+
+* El cliente esta desempleado.
+
+__Regla 10.- Probabilidad Credito Malo 0.7882 si: __
+
+* El cliente tiene descubierto en cuenta.
+
+* El credito es para educacion.
+
+* Cuantia igual o inferior a 7882
+
+__Regla 11.- Probabilidad Credito Malo 0.76 si:__
+
+* Saldo en cuenta de descubierto hasta 500 DM.
+
+* El historial de credito puede tener 3 estados : critical, delayed, repaid.
+
+* Cantidad del prestamo mayor de 7882 euros.
+
+__Regla 12.- Probabilidad Credito Malo 0.429 si:__
+
+* Saldo en cuenta de descubierto hasta 500 DM.
+
+* El arbol que genera es complejo y dificil de graficar. Es posible que 
+empleando menos niveles en algunas variables permitiria obtener un arbol mas 
+simple.
+
+```{r}
+# Representacion grafica del modelo
+
+# modelo_1 <- C5.0(credit_train[, names(credit_train) != "default"],
+# credit_train[, names(credit_train) == "default"])
+# plot(modelo_1)
+```
+
+El arbol que se obtiene empleando todas las variables del dataset es muy grande,
+con muchas condiciones, lo que dificulta su lectura, compresion y obtencion de
+conocimiento.
+
+Se obtienen 118 observaciones mal clasificadas lo que es un 18%.
+
+\newpage
+
+### Dataset Simplificado parametros Default
+
+Se selecciona las variables que superan el 50% de attribute use del modelo
+anterior a fin de reducir la complejidad del arbol.
+
+```{r}
+# Modelo C5.0 simplificado default
+modelo_2 <- C5.0(credit_train[, names(credit_train) %in% c(
+  "checking_balance","credit_history", "months_loan_duration", "amount",
+  "installment_plan")],
+  credit_train[, names(credit_train) == "default"],rules = TRUE)
+
+summary(modelo_2)
+```
+
+```{r}
+modelo_2 <- C5.0(credit_train[, names(credit_train) %in% c(
+  "checking_balance","credit_history", "months_loan_duration", "amount",
+  "installment_plan")],
+  credit_train[, names(credit_train) == "default"])
+
+# Generar el gráfico y guardarlo como un archivo PNG
+png("C50_Simplificado_Default.png", width = 1200, height = 900) 
+# Ajusta el tamaño según necesites
+plot(modelo_2, main = "C5.0 Simplificado Default")
+dev.off()  # Terminar la captura del gráfico
+img <- readPNG("C50_Simplificado_Default.png")
+grid::grid.raster(img)
+```
+
+
+El algoritmo genera 5 reglas.
+
+Las primeras 2 reglas son de clase: 1 creditos buenos, las 3 siguientes son la
+clase 2 credito malo y la probabilidad asociada.
+
+__Regla 1.- Probabilidad Credito Bueno 0.861 si :__
+
+  * Balance en cuenta corriente mayor o igual 200 DM a desconocido.
+
+__Regla 2.- Probabilidad Credito Bueno 0.736 si :__
+
+  * Cantidad del prestamo menor o igual a 7882.
+
+  * El installment plan puede ser en bank o inexistente.
+
+__Regla 3.- Probabilidad Credito Malo 0.762 si :__
+
+  * El saldo bancario oscila entre descubierto y 200DM.
+
+  * Cantidad del prestamo menor o igual a 7882.
+
+  * Historico de credito con valor: fully repaid, fully repaid this bank.
+
+__Regla 4.- Probabilidad Credito Malo 0.75 si :__
+
+  * El saldo bancario oscila entre 0 y 200DM.
+
+  * El installment plan es stores.
+
+__Regla 5.- Probabilidad Credito Malo 0.697 si :__
+
+  * El saldo bancario oscila entre descubierto y 200DM.
+
+  * Cantidad del prestamo mayor a 7882.
+
+  * Puede obtenerse conocimiento de estas reglas de modo visual muy facilmente
+con la representacion del grafico:
+
+
+
+**Nivel 1 .- Variable Checking Balance**
+  
+  * >= 200 DM a unknow: Nodo terminal con 308 casos 
+                            
+                            
+                            --> Nodo 2
+                            
+                            --> Regla 1 (Prob 0.86)
+                            
+  
+  * < 0 - 200 DM - Variable Amount
+                            
+                            
+                            --> Nivel 2  == Nodo 3 
+                            
+
+
+**Nivel 2 .- Checking Balance [< 0 - 200 DM] - Checking Balance [< 0 - 200 DM]**
+
+  * Amount > 7882 Nodo terminal con 14 casos
+                          
+                          
+                          --> Nodo 14
+                          
+                          --> Regla 5 (Prob 0.697)
+                          
+  * Amount <= 7882
+                          
+
+
+**Nivel 3 .- Checking Balance [< 0 - 200 DM] - Checking Balance [< 0 - 200 DM]** 
+         **- Variable Amount [<=7882] -- Credit History**
+         
+  * fully                  
+                           
+                           
+                            --> Nodo Terminal 5
+                           
+                            --> Regla 3 (Prob 0.762)
+  
+  * fully repaid this bank.
+                           
+                           
+                           --> Nodo Terminal 6
+                           
+                           --> Regla 3 (Prob 0.762)
+                           
+  
+**Nivel 4 .- Checking Balance [< 0 - 200 DM]- Checking Balance [< 0 - 200 DM]** 
+         **- Variable Amount [<=7882] -- Credit History  [delayed repaid]**
+
+
+  * Checking Balance < 0 DM
+  
+  * Checking Balance 1 - 200 DM
+  
+  
+  
+**Nivel 5.1 .- Checking Balance [< 0 - 200 DM]- Checking Balance [< 0 - 200 DM]** 
+           **- Variable Amount [<=7882] -- Credit History  [delayed repaid] -**
+           **- Checking Balance [< 0 DM]**
+  
+  
+  * Credit History  delayed repaid
+                           
+                           
+                           --> Nodo Terminal 6
+                           
+                           --> Regla 3 (Prob 0.762)
+                           
+                           
+                           
+**Nivel 5.2 .- Checking Balance [< 0 - 200 DM] - Checking Balance [< 0 - 200 DM]** 
+           **- Variable Amount [<=7882] - Credit History  [delayed repaid] -**
+           **- Checking Balance [1- 200 DM]**
+  
+  * Installment_plan
+                    
+                    
+                    --> bank, none 
+                    --> Nodo Terminal 12
+                    --> Regla 2 (Prob 0.736)
+                    
+                    --> stores
+                    --> Nodo Terminal 12
+                    --> Regla 2 (Prob 0.736)
+  
+
+**Conclusiones:** 
+Con esta solucion se obtiene 154 instancias mal clasificadas lo que supone 36
+instancias mas que con el dataset completo y un error del 23.3% frente al 17.9%.
+
+El numero de reglas se reduce de 12 a 5.
+
+En este caso:
+2 reglas clase 1 credito bueno: 
+3 reglas clase 2 credito malo.
+
+Las reglas tienen un maximo de 3 condiciones, en el modelo simplificado 
+frente a las 5 del modelo completo.
+
+Esto es, se obtiene menos de la mitad de las reglas con el dataset simplificado
+y no solo eso,la complejidad de la mismas se reduce tambien a la mitad.
+
+El arbol por tanto puede graficarse, es mucho mas simple de obtener
+conocimiento a partir de las reglas y unicamente hay que evaluar la perdida de 
+informacion para decidir.
+
+**Analisis de la Bondad de Ajuste**
+
+
+```{r}
+# Modelo 1: C5.0 Completo Default
+
+modelo_1_predict <- predict(modelo_1, 
+                            credit_test[, names( credit_test) != "default"],
+                            type="class")
+
+confusion_matrix_modelo_1 <- table(credit_test$default, modelo_1_predict)
+modelo <- "C5.0 Completo Default"
+performance_modelo1 <- calculate_performance(modelo, confusion_matrix_modelo_1)
+
+# Modelo 2: C5.0 Simplificado Default
+
+modelo_2_predict <- predict(modelo_2, 
+                            credit_test[, names( credit_test) != "default"],
+                            type="class")
+
+confusion_matrix_modelo2 <- table(credit_test$default, modelo_2_predict)
+modelo <- "C5.0 Simplificado Default"
+performance_modelo2 <- calculate_performance(modelo, confusion_matrix_modelo2 )
+
+# Unimos resultados:
+Results_C50 <-rbind(performance_modelo1, performance_modelo2)
+print(Results_C50)
+```
+
+En el modelo simplificado implica una reduccion de instancias correctas de
+un 0.75 a un 0.71 y el error se incrementa de un 0.25 a un 0.28.
+Pese a ello es mas interesante el modelo simplificado ya que facilita la 
+comprension del arbol y sus reglas.
+
+\newpage
+
+## Modelo C5.0 Boosting
+
+Debido a que se va a fijar un parametro para el boosting trials = 10, no se 
+analizaran las reglas de los arboles, ya que alargarian innecesariamente el 
+documento, por esta razon, se procedera a calcular los modelos y analizar la
+bondad de ajuste de los modelos generados.
+
+### Modelo C5.0 Dataset Completo Adaptative Boosting
+ 
+```{r}
+# C5.0 Boosting <= Dataset Completo
+modelo_3 <- C5.0(credit_train[, names(credit_train) != "default"],
+                credit_train[, names(credit_train) == "default"], trials=10)
+               
+# # Generar el gráfico y guardarlo como un archivo PNG
+# png("C5.0 Completo Boosting.png", width = 1200, height = 900) 
+# Ajusta el tamaño según necesites
+# plot(modelo_3, main = "C5.0 Completo Boosting")
+# dev.off()  
+# # Terminar la captura del gráfico
+# img <- readPNG("C5.0 Completo Boosting.png")
+# grid::grid.raster(img)
+```
+```{r}
+# C5.0 Boosting <= Dataset Completo  
+modelo_3_predict <- predict(modelo_3, credit_test[
+  , names(credit_test) != "default"], type="class")
+
+table(credit_test[, names(credit_test) == "default", ], 
+      Predicted=modelo_3_predict)
+```
+
+### Modelo C5.0 Dataset Simplificado Adaptative Boosting
+
+```{r}
+# C5.0 - Boosting <= Dataset Simplificado [arbol]
+modelo_4 <- C5.0(credit_train[, names(credit_train) %in% c(
+  "checking_balance","credit_history", "months_loan_duration", "amount",
+  "installment_plan")], credit_train[, names(credit_train) == "default"],
+  trials=10)
+#plot(modelo_4)
+
+# Generar el gráfico y guardarlo como un archivo PNG
+png("C50_Simplificado_Boosting.png", width = 1200, height = 900) 
+# Ajusta el tamaño según necesites
+plot(modelo_4, main = "C5.0 Simplificado Boosting")
+dev.off()  # Terminar la captura del gráfico
+img <- readPNG("C50_Simplificado_Boosting.png")
+grid::grid.raster(img)
+```
+
+```{r}
+# C5.0 - Boosting <= Dataset Simplificado  ## PREDICCIONES ##
+modelo_4_predict <- predict(modelo_4, 
+                           credit_test[, names(credit_test) != "default"],
+                           type="class")
+table(credit_test[, names(credit_test) == "default",],Predicted=modelo_4_predict)
+```
+```{r}
+# C5.0 Boosting Completo
+confusion_matrix_modelo_3 <- table(credit_test$default, modelo_3_predict)
+modelo <- "C5.0 Completo Boosting"
+performance_modelo3 <- calculate_performance(modelo, confusion_matrix_modelo_3)
+
+# C5.0 Boosting Simplificado
+confusion_matrix_modelo_4 <- table(credit_test$default, modelo_4_predict)
+modelo <- "C5.0 Simplificado Boosting"
+performance_modelo4 <- calculate_performance(modelo, confusion_matrix_modelo_4)
+
+# Resultados Boosting completo
+Results_C50Bost <-rbind(performance_modelo3, performance_modelo4)
+print(Results_C50Bost)
+```
+La mejora obtenida con el boosting es inapreciable en el caso del dataset 
+completo.
+
+Sin embargo en el caso del dataset simplificado con boosting la 
+mejora es muy notable ya que nos acerca a los resultados del modelo completo
+sin boosting.
+
+Por esta razon de todos los modelos presentados se escogeria
+el Simplificado con Boosting, es el que mejor equilibrio ofrece en cuanto a 
+nivel de acierto y error , unido a una menor dificultad y  capacidad 
+explicativa del arbol obtenido.
+
+```{r}
+# Resultados Boosting completo
+Results_C50_Total <-rbind(Results_C50, Results_C50Bost)
+print(Results_C50_Total)
+```
+## Modelo C5.0 con Penalizacion
+
+Se establecera una penalizacion en los FN, se pretende evitar al maximo este
+caso, aquellos creditos asignados buenos que en realidad no lo son.
+
+Se le aplica una penalizacion diferente a los FP con valor 1 minima y de valor
+4 maxima a los FN, con este criterio se procede a recalcular todos los modelos.
+
+```{r}
+# Generamos matriz dimensiones
+matrix_dimensions <- list(c("1", "2"), c("1", "2"))
+names(matrix_dimensions) <- c("predicted", "actual")
+matrix_dimensions
+
+# Generamos matriz de errores
+
+error_cost <- matrix(c(0, 1, 4, 0), nrow = 2,
+dimnames = matrix_dimensions)
+error_cost
+```
+
+```{r}
+# Modelo 5: C5.0 Completo Default Penalizacion
+
+modelo_5 <- C5.0(credit_train[, names(credit_train) != "default"],
+                 credit_train[, names(credit_train) == "default"], rules=TRUE,
+                 costs = error_cost)
+
+modelo_5_predict <- predict(modelo_5, 
+                            credit_test[, names( credit_test) != "default"],
+                            type="class")
+
+confusion_matrix_modelo_5 <- table(credit_test$default, modelo_5_predict)
+modelo <- "C5.0 Completo Default Penalizacion"
+performance_modelo5 <- calculate_performance(modelo, confusion_matrix_modelo_5)
+
+# Modelo 6: C5.0 Simplificado Default Penalizacion
+
+modelo_6 <- C5.0(credit_train[, names(credit_train) %in% c(
+  "checking_balance","credit_history", "months_loan_duration", "amount",
+  "installment_plan")],
+  credit_train[, names(credit_train) == "default"],rules = TRUE,
+  costs = error_cost)
+
+modelo_6_predict <- predict(modelo_6, 
+                            credit_test[, names( credit_test) != "default"],
+                            type="class")
+
+confusion_matrix_modelo6 <- table(credit_test$default, modelo_6_predict)
+modelo <- "C5.0 Simplificado Default Penalizacion"
+performance_modelo6 <- calculate_performance(modelo, confusion_matrix_modelo6 )
+
+# Unimos resultados:
+Results_C50_Pen <-rbind(performance_modelo5, performance_modelo6)
+
+# C5.0 Boosting Completo Penalizacion
+modelo_7 <- C5.0(credit_train[, names(credit_train) != "default"],
+                credit_train[, names(credit_train) == "default"], trials=10,
+                costs = error_cost)
+
+modelo_7_predict <- predict(modelo_7, credit_test[
+  , names(credit_test) != "default"], type="class")
+
+confusion_matrix_modelo_7 <- table(credit_test$default, modelo_7_predict)
+modelo <- "C5.0 Completo Boosting Penalizacion"
+performance_modelo7 <- calculate_performance(modelo, confusion_matrix_modelo_7)
+
+# C5.0 - Boosting Simplificado Penalizacion 
+modelo_8 <- C5.0(credit_train[, names(credit_train) %in% c(
+  "checking_balance","credit_history", "months_loan_duration", "amount",
+  "installment_plan")], credit_train[, names(credit_train) == "default"],
+  trials=10,costs = error_cost)
+
+modelo_8_predict <- predict(modelo_8, 
+                           credit_test[, names(credit_test) != "default"],
+                           type="class")
+
+confusion_matrix_modelo_8 <- table(credit_test$default, modelo_8_predict)
+modelo <- "C5.0 Simplificado Boosting Penalizacion"
+performance_modelo8 <- calculate_performance(modelo, confusion_matrix_modelo_8)
+
+# Resultados Boosting completo
+Results_C50Bost_Pen <-rbind(performance_modelo7, performance_modelo8)
+
+Result_CS50_Total_Pen <- rbind(Results_C50_Pen,Results_C50Bost_Pen)
+
+print(Result_CS50_Total_Pen)
+```
+La aplicacion de la penalizacion al modelo completo por default resulta en una 
+bajada muy considerable de los FN a costa de disminuir la accuracy y aumentar
+el error como era de esperar. El problema es que los TP disminuyen a menos de la 
+mitad con lo que la concesion de creditos se veria muy mermada y por otra parte
+los FP se multiplican por 5. La reduccion de FN implicaria un cambio muy grande
+en el modelo de negocio.
+
+La aplicacion de la penalizacion en los casos de boosting, produce unos 
+resultados mas cercanos a los modelos previos a la aplicacion de la penalizacion
+por el propio efecto promedio que genera el boosting. Aumentan los TP 
+sensiblemente pero a costa de emperorar los TN que era justo lo que se pretendia
+evitar.
+
+```{r}
+Modelo_CS50_Completo <-rbind(Results_C50_Total,Result_CS50_Total_Pen)
+Modelo_CS50_Completo
+```
+En esta ultima tabla se muestra todos los modelos calculados para este algoritmo.
+
+Se seleccionaria el modelo C5.0 Simplificado Bosting ya que minimiza el error
+con un 0.256, minimiza los FN, maximiza los TP y ademas proporciona el arbol
+mas simple.
+
+\newpage
+
+## Modelo CART
+
+### Cart Completo
+```{r}
+modelo_cart  <- rpart(default~., method="class", data=credit_train)
+
+# Generar el gráfico y guardarlo como un archivo PNG
+png("Modelo_CART_Completo.png", width = 1200, height = 900) 
+# Ajusta el tamaño según necesites
+plot(modelo_cart, uniform=TRUE,main = "Modelo CART COMPLETO")
+text(modelo_cart , use.n=TRUE, cex=.8)
+dev.off()  # Terminar la captura del gráfico
+img <- readPNG("Modelo_CART_Completo.png")
+grid::grid.raster(img)
+```
+
+
+
+```{r}
+modelo_cart_predict <- modelo_cart %>% predict(credit_test, type = "class")
+
+confusion_matrix_modelo_cart <- table(credit_test$default, modelo_cart_predict)
+modelo <-"CART model"
+
+performance_modelo_cart <- calculate_performance(modelo, 
+                                                 confusion_matrix_modelo_cart)
+
+performance_modelo_cart
+```
+El modelo obtenido esta en la linea de los obtenidos con el modelo C50 accurancy 
+entorno al 0.73 y un error cercano al 0.27.
+
+Este modelo genera un arbol binario y esta empleando todas las variables del 
+modelo.
+
+### Cart Pruned
+
+```{r}
+# Modelo CART Pruned->
+modelo_cart_pruned <- prune(modelo_cart,
+                            cp=modelo_cart$cptable
+                            [which.min(modelo_cart$cptable[,"xerror"]),"CP"])
+
+# Generar el gráfico y guardarlo como un archivo PNG
+png("Modelo_CART_Pruned.png", width = 1200, height = 900)
+
+# Ajusta el tamaño según necesites
+plot(modelo_cart_pruned, uniform=TRUE,main = "MODELO CART PRUNED")
+text(modelo_cart_pruned , use.n=TRUE, cex=.8)
+dev.off()  # Terminar la captura del gráfico
+img <- readPNG("Modelo_CART_Pruned.png")
+grid::grid.raster(img)
+
+```
+
+
+```{r}
+modelo_cart_pruned_predict <- modelo_cart_pruned %>% predict(credit_test,
+                                                             type = "class")
+
+confusion_matrix_modelo_cart_pruned <- table(credit_test$default,
+                                             modelo_cart_pruned_predict)
+modelo <-"CART model pruned"
+
+performance_modelo_cart_pruned <- calculate_performance(modelo, 
+                                  confusion_matrix_modelo_cart_pruned)
+
+performance_modelo_cart_pruned
+```
+Con el modelo podado el numero de FN aumenta a pesar de que accuracy y error
+se mantienen a la par que el modelo sin poder, el incremento es minimo, en 
+cambio los nodos  del arbol pruned contienen condiciones mas sencillas, binarias.
+
+Por ultimo se procede obtener el arbol con el modelo simplificado.
+
+### Cart Completo Simplificado
+
+```{r}
+# Seleccionar solo las columnas necesarias y la variable objetivo
+credit_train_subset <- credit_train[, c(
+  "checking_balance", "credit_history", "months_loan_duration", "amount",
+  "installment_plan", "default")]
+
+# Filtrar filas con valores completos (sin NA) en las columnas seleccionadas
+credit_train_clean <- credit_train_subset[complete.cases(credit_train_subset), ]
+
+# Ajustar el modelo CART con las variables seleccionadas
+modelo_cart_simp <- rpart(default ~ checking_balance + credit_history + 
+                          months_loan_duration + amount + installment_plan, 
+                          method = "class", data = credit_train_clean)
+
+# Generar el gráfico y guardarlo como un archivo PNG
+png("Modelo_CART_Completo_Simplificado.png", width = 1200, height = 900) 
+plot(modelo_cart_simp, uniform = TRUE, main = "Modelo CART COMPLETO SIMPLIFICADO")
+text(modelo_cart_simp, use.n = TRUE, cex = .8)
+dev.off()  # Terminar la captura del gráfico
+
+# Leer y mostrar la imagen
+library(png)
+library(grid)
+img <- readPNG("Modelo_CART_Completo_Simplificado.png")
+grid::grid.raster(img)
+
+```
+
+```{r}
+modelo_cart_predict_simp <- modelo_cart_simp %>% predict(credit_test, type = "class")
+
+confusion_matrix_modelo_cart_simp <- table(credit_test$default, modelo_cart_predict_simp)
+modelo <-"CART model simplificado"
+
+performance_modelo_cart_simp <- calculate_performance(modelo, 
+                                                 confusion_matrix_modelo_cart_simp)
+
+performance_modelo_cart_simp
+
+```
+
+### Cart Completo Simplificado Pruned
+
+```{r}
+# Modelo CART Pruned->
+modelo_cart_simp_pruned <- prune(modelo_cart_simp,
+                            cp=modelo_cart$cptable
+                            [which.min(modelo_cart$cptable[,"xerror"]),"CP"])
+
+# Generar el gráfico y guardarlo como un archivo PNG
+png("Modelo_CART_Simp_Pruned.png", width = 1200, height = 900)
+
+# Ajusta el tamaño según necesites
+plot(modelo_cart_pruned, uniform=TRUE,main = "MODELO CART SIMPLIFICADO PRUNED")
+text(modelo_cart_pruned , use.n=TRUE, cex=.8)
+dev.off()  # Terminar la captura del gráfico
+img <- readPNG("Modelo_CART_Simp_Pruned.png")
+grid::grid.raster(img)
+
+```
+
+```{r}
+modelo_cart_predict_simp_pruned <- modelo_cart_simp_pruned %>% predict(credit_test, type = "class")
+
+confusion_matrix_modelo_cart_simp_pruned <- table(credit_test$default, modelo_cart_predict_simp_pruned)
+modelo <-"CART model simplificado pruned"
+
+performance_modelo_cart_simp_pruned <- calculate_performance(modelo, 
+                                                 confusion_matrix_modelo_cart_simp_pruned)
+
+performance_modelo_cart_simp_pruned
+```
+
+Resumen de todos los modelos CART planteados.
+
+```{r}
+Modelo_Cart_Total <- rbind(performance_modelo_cart,
+                           performance_modelo_cart_pruned,
+                           performance_modelo_cart_simp,
+                           performance_modelo_cart_simp_pruned
+                           )
+
+Modelo_Cart_Total
+```
+Todos los resultados estan en un rango proximo, mucho mas de lo que se obtuvo
+para el algoritmo C5.0.
+
+Hay que recordar que el algoritmo a superar de C50 es:
+
+```{r}
+performance_modelo4
+```
+Los mejores modelos son CART model pruned, y C5.0 Simplificado Boosting.
+
+Los resultados son muy similares, por lo que un diferente subset de variables
+o alguna discretizacion en alguna variable podria marcar mas diferencias.
+
+Con los datos seleccionados CART model pruned proporciona el arbol mas simple
+posible con unas diferencias en el poder de prediccion inapreciables, razon 
+por la cual, la opcion a elegir seria CART model pruned.
+
