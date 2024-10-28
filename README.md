@@ -14,7 +14,7 @@ This repository is an evolution of a practical assignment for the Data Mining co
 ![Pagina_6](Images/6.png)
 ![Pagina_7](Images/7.png)
 ![Pagina_8](Images/8.png)
-![Pagina_]9(Images/9.png)
+![Pagina_9](Images/9.png)
 ![Pagina_10](Images/10.png)
 ![Pagina_11](Images/11.png)
 ![Pagina_12](Images/12.png)
