@@ -6,7 +6,7 @@ This repository is an evolution of a practical assignment for the Data Mining co
 **http://archive.ics.uci.edu/dataset/144/statlog+german+credit+data**
 
 
-![Portrait](Images/1.png)
+![Portrait](Images/1.pptx.png)
 ![Pagina_2](Images/2.png)
 ![Pagina_3](Images/3.png)
 ![Pagina_4](Images/4.png)
